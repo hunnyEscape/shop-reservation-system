@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザー自身のプロフィールのみ読み書き可能
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false; // ユーザープロフィールの削除は禁止
+    }
+    
+    // 予約データ
+    match /reservations/{reservationId} {
+      // 予約者本人または管理者のみが読み取り可能
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+      
+      // 予約の作成はCloud Functionsのみで行う（クライアントからは不可）
+      allow create: if false;
+      
+      // 予約のキャンセルはCloud Functionsのみで行う（クライアントからは不可）
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // 座席データ
+    match /seats/{seatId} {
+      // 座席の基本情報は誰でも閲覧可能
+      allow read: if true;
+      allow write: if false; // 変更は管理者のみ（Cloud Functionsを介して）
+      
+      // タイムスロット
+      match /timeSlots/{timeSlotId} {
+        // 空き状況は誰でも閲覧可能
+        allow read: if true;
+        allow write: if false; // 変更はCloud Functionsのみ
+      }
+    }
+    
+    // 日付の空き状況
+    match /dateAvailability/{dateId} {
+      allow read: if true; // 誰でも閲覧可能
+      allow write: if false; // 変更はCloud Functionsのみ
+    }
+    
+    // 管理者
+    match /admins/{adminId} {
+      allow read: if request.auth != null && request.auth.uid == adminId;
+      allow write: if false; // 管理者の追加・削除は手動またはCloud Functionsのみ
+    }
+  }
+}
